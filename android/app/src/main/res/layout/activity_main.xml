@@ -26,6 +26,23 @@
             android:text="@string/label_not_paired"
             android:textSize="15sp" />
 
+        <TextView
+            android:id="@+id/tvPcListTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="@string/label_pc_list_title"
+            android:textColor="#66000000"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/llPcList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="vertical" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnPair"
             android:layout_width="match_parent"

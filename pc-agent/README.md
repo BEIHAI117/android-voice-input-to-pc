@@ -57,10 +57,26 @@ PhoneMic 安装包，也有可扫描的二维码图片，还有扫不了码时�
 
 | 文件 | 作用 |
 |---|---|
-| `config.json` | 端口、注入模式、配对令牌（跨重启保留，二维码不变） |
+| `config.json` | 端口、**电脑显示名 `device_name`**、注入模式、配对令牌（跨重启保留，二维码不变） |
 | `commands.json` | 语音 → 动作映射，首次运行从 `commands.example.json` 复制 |
 | `trust.json` | 已配对设备 |
 | `pairing-qr.png` | 配对二维码图片 |
+
+### 电脑叫什么名字
+
+手机悬浮球上显示的就是这个名字。改法两选一：
+
+```bash
+# 1) 持久：改 config.json 里的 device_name 后重启
+#    %LOCALAPPDATA%\PhoneMic\config.json  →  "device_name": "客厅电脑"
+
+# 2) 临时：启动时加参数（会写回 config.json）
+python -m agent --name "书房台式机"
+```
+
+**不配置时默认取电脑的主机名**，所以同一局域网里的两台机器开箱就能区分。
+多台电脑 = 各自跑一份 agent、各自出一个二维码，手机扫码绑定多次，
+**单击悬浮球**即可在它们之间切换（见根目录 README「多电脑切换」）。
 
 ## 注入方式怎么选
 

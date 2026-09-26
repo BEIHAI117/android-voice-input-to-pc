@@ -1,14 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  The ball stays exactly 56dp so it never covers more screen than the original
+  icon: the computer name is drawn *inside* the circle, under the glyph.
+  maxWidth keeps the text within the circle's chord at that height.
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_width="56dp"
+    android:layout_height="56dp"
     android:background="@drawable/bg_ball"
     android:contentDescription="@string/ball_desc">
 
-    <ImageView
-        android:layout_width="26dp"
-        android:layout_height="26dp"
-        android:layout_gravity="center"
-        android:contentDescription="@string/ball_desc"
-        android:src="@drawable/ic_ball" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center">
+
+        <ImageView
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:layout_marginBottom="1dp"
+            android:contentDescription="@string/ball_desc"
+            android:src="@drawable/ic_ball" />
+
+        <!-- Name of the computer this ball currently sends to. -->
+        <TextView
+            android:id="@+id/tvPcLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxWidth="44dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:textColor="#FFFFFFFF"
+            android:textSize="9sp"
+            android:shadowColor="#A0000000"
+            android:shadowRadius="2" />
+    </LinearLayout>
 </FrameLayout>

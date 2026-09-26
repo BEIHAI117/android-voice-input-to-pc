@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.doAfterTextChanged
 import com.google.zxing.integration.android.IntentIntegrator
+import com.phonemic.app.data.PcTarget
 import com.phonemic.app.data.Settings
 import com.phonemic.app.databinding.ActivityMainBinding
 import com.phonemic.app.overlay.FloatBallService
@@ -86,9 +87,11 @@ class MainActivity : AppCompatActivity() {
             "refreshUi: asrEngine=${settings.asrEngine} cloudBase='${settings.cloudBaseUrl}' " +
                 "cloudKey=${if (settings.cloudApiKey.isEmpty()) "empty" else "set"}"
         )
+        val active = settings.activePc
         binding.tvPairState.text =
-            if (settings.isPaired) getString(R.string.label_paired_pc, settings.pcName.ifEmpty { settings.pcEndpoint })
-            else getString(R.string.label_not_paired)
+            if (active == null) getString(R.string.label_not_paired)
+            else getString(R.string.label_active_pc, active.name, settings.pcs.size)
+        renderPcList()
 
         val running = FloatBallRunning
         binding.btnToggleBall.setText(
@@ -106,6 +109,67 @@ class MainActivity : AppCompatActivity() {
         if (binding.etApiModel.text.isNullOrEmpty()) binding.etApiModel.setText(settings.cloudModel)
         if (binding.etApiKey.text.isNullOrEmpty()) binding.etApiKey.setText(settings.cloudApiKey)
     }
+
+    /**
+     * One row per bound computer. Tapping selects it, long-pressing deletes
+     * it — the same list the floating ball cycles through with a single tap.
+     */
+    private fun renderPcList() {
+        val container = binding.llPcList
+        container.removeAllViews()
+        val list = settings.pcs
+        binding.tvPcListTitle.visibility =
+            if (list.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
+        if (list.isEmpty()) return
+
+        val activeId = settings.activePcId
+        for (pc in list) {
+            val isActive = pc.id == activeId
+            val row = android.widget.TextView(this).apply {
+                text = (if (isActive) "● " else "○ ") + "${pc.name}\n${pc.endpoint}"
+                textSize = 14f
+                setTextColor(0xDE000000.toInt())
+                setPadding(dp(14), dp(10), dp(14), dp(10))
+                setBackgroundResource(
+                    if (isActive) R.drawable.bg_pc_row_active else R.drawable.bg_pc_row,
+                )
+                isClickable = true
+                setOnClickListener { selectPc(pc) }
+                setOnLongClickListener {
+                    confirmRemovePc(pc)
+                    true
+                }
+            }
+            val lp = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(6) }
+            container.addView(row, lp)
+        }
+    }
+
+    private fun selectPc(pc: PcTarget) {
+        if (pc.id == settings.activePcId) return
+        settings.setActive(pc.id)
+        if (FloatBallRunning) FloatBallService.reconnect(this)
+        Toast.makeText(this, getString(R.string.hint_switched, pc.name), Toast.LENGTH_SHORT).show()
+        refreshUi()
+    }
+
+    private fun confirmRemovePc(pc: PcTarget) {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.confirm_remove_pc, pc.name))
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                settings.removePc(pc.id)
+                if (FloatBallRunning) FloatBallService.reconnect(this)
+                refreshUi()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density + 0.5f).toInt()
 
     private fun toggleBall() {
         if (FloatBallRunning) {
@@ -163,7 +227,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun manualPair() {
         val input = android.widget.EditText(this).apply {
-            hint = "192.168.1.3:8765?t=配对令牌"
+            hint = "192.168.1.3:8765?t=配对令牌[&n=电脑名]"
             setSingleLine(true)
         }
         AlertDialog.Builder(this)
@@ -178,14 +242,24 @@ class MainActivity : AppCompatActivity() {
 
     private fun acceptPairing(raw: String) {
         val payload = Pairing.parse(raw)
-        if (payload == null || payload.token.isEmpty()) {
+        if (payload == null) {
             Toast.makeText(this, "无法识别的配对信息", Toast.LENGTH_LONG).show()
             return
         }
-        settings.pcEndpoint = payload.wsUrl
-        settings.token = payload.token
-        settings.pcName = payload.wsUrl
-        Toast.makeText(this, "已绑定 ${payload.wsUrl}", Toast.LENGTH_LONG).show()
+        // A bare "host:port" has no token; it is only meaningful for a machine
+        // we already hold one for (re-pairing after an IP change).
+        val known = settings.pcs.any { it.endpoint == payload.wsUrl }
+        if (payload.token.isEmpty() && !known) {
+            Toast.makeText(this, "配对信息里没有令牌，请扫电脑上的二维码", Toast.LENGTH_LONG).show()
+            return
+        }
+        val pc = settings.upsertPc(payload.name, payload.wsUrl, payload.token)
+        if (pc == null) {
+            Toast.makeText(this, "无法识别的配对信息", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (FloatBallRunning) FloatBallService.reconnect(this)
+        Toast.makeText(this, "已绑定 ${pc.name}", Toast.LENGTH_LONG).show()
         refreshUi()
     }
 
@@ -197,7 +271,7 @@ class MainActivity : AppCompatActivity() {
      * spells out the likely cause.
      */
     private fun runConnectivityTest() {
-        val endpoint = settings.pcEndpoint
+        val endpoint = settings.activePc?.endpoint.orEmpty()
         if (endpoint.isEmpty()) {
             showDiag("还没有绑定电脑。请先点「扫码绑定电脑」。")
             return

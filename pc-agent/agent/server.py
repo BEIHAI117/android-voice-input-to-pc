@@ -8,6 +8,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from . import commands as commands_mod
 from . import http_page, inject, llm
@@ -38,7 +39,10 @@ def lan_ip() -> str:
 
 
 def pairing_payload(cfg: Config) -> str:
-    return f"phonemic://{lan_ip()}:{cfg.port}?v=1&t={cfg.token}"
+    # `n` carries this computer's display name so the phone can label the
+    # floating ball before the first connection. Optional: an older phone that
+    # does not know `n` ignores it and falls back to auth_ok.device_name.
+    return f"phonemic://{lan_ip()}:{cfg.port}?v=1&t={cfg.token}&n={quote(cfg.device_name)}"
 
 
 class Session:
@@ -212,6 +216,7 @@ async def run(cfg: Config) -> None:
         payload=payload,
         token=cfg.token,
         pc_name=cfg.device_name,
+        config_path=str(cfg.config_path),
     )
 
     ip = lan_ip()
@@ -219,6 +224,10 @@ async def run(cfg: Config) -> None:
     print(f"  PhoneMic PC agent  v1  ·  {cfg.device_name}")
     print(f"  listening on ws://{ip}:{cfg.port}   (encrypt={'on' if cfg.encrypt else 'off'})")
     print(f"  inject mode: {cfg.inject_mode}{'   [DRY RUN]' if cfg.dry_run else ''}")
+    print()
+    print(f"  本机名：{cfg.device_name}")
+    print(f"    改名：编辑 {cfg.config_path} 里的 \"device_name\" 后重启（或用 --name \"名字\"）")
+    print(f"    手机上单击悬浮球即可在多台电脑之间切换。")
     print()
     if httpd is not None:
         print(f"  ┌──────────────────────────────────────────────────────────┐")
@@ -270,12 +279,16 @@ def _write_qr(payload: str) -> Path | None:
 def _show_qr(payload: str, qr_png: Path | None) -> None:
     if qr_png is not None:
         print(f"  QR code (image): {qr_png}")
-        # The PNG is the reliable thing to scan; open it so it is one glance away.
+        # The PNG is the reliable thing to scan; open it so it is one glance
+        # away. PHONEMIC_QR_AUTOPEN=0 keeps a second, unattended instance from
+        # popping windows onto the desktop (tests, headless boxes).
         try:
             import os
             import subprocess
 
-            if os.name == "nt":
+            if os.environ.get("PHONEMIC_QR_AUTOPEN", "1") == "0":
+                pass
+            elif os.name == "nt":
                 os.startfile(str(qr_png))  # noqa: S606
             else:
                 subprocess.Popen(["xdg-open", str(qr_png)])

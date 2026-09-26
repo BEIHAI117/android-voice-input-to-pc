@@ -2,14 +2,17 @@
 <resources>
     <string name="app_name">PhoneMic</string>
 
-    <string name="ball_desc">悬浮球，长按说话</string>
-    <string name="hint_press_and_hold">长按说话，松手发送</string>
+    <string name="ball_desc">悬浮球，长按说话，单击切换电脑</string>
+    <string name="ball_desc_with_pc">PhoneMic 悬浮球，当前电脑 %1$s（%2$s）。长按说话，单击切换电脑</string>
     <string name="hint_listening">正在聆听…松手发送</string>
     <string name="hint_thinking">识别中…</string>
     <string name="hint_sent">已发送</string>
     <string name="hint_no_paired_pc">还没有绑定电脑，请先扫码绑定</string>
     <string name="hint_not_connected">电脑未连接</string>
     <string name="hint_error">出错了：%1$s</string>
+    <string name="hint_switched">已切换到 %1$s</string>
+    <string name="hint_only_one_pc">只绑定了一台电脑，再扫一台就能切换</string>
+    <string name="label_no_pc">未绑定电脑</string>
 
     <string name="title_settings">PhoneMic 设置</string>
     <string name="btn_start_ball">启动悬浮球</string>
@@ -19,8 +22,10 @@
     <string name="btn_test_connection">测试电脑连接</string>
     <string name="btn_permission_guide">权限与后台引导</string>
 
-    <string name="label_paired_pc">已绑定电脑：%1$s</string>
+    <string name="label_active_pc">当前电脑：%1$s（已绑定 %2$d 台）</string>
+    <string name="label_pc_list_title">已绑定电脑 —— 点选切换，长按删除</string>
     <string name="label_not_paired">尚未绑定电脑</string>
+    <string name="confirm_remove_pc">删除绑定「%1$s」？</string>
     <string name="label_asr_engine">识别方式</string>
     <string name="label_inject_hint">电脑端注入方式由电脑端配置决定</string>
 

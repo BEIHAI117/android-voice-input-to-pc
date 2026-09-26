@@ -3,6 +3,7 @@ package com.phonemic.app.net
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.phonemic.app.data.PcTarget
 import com.phonemic.app.data.Settings
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -14,9 +15,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Single WebSocket connection to the PC agent.
+ * Single WebSocket connection to the *active* PC agent.
  *
- * Two things this must get right for the product to feel reliable:
+ * Three things this must get right for the product to feel reliable:
  *
  *  1. **Never lose a dictation.** If the user speaks before the socket is up,
  *     the text is queued and flushed on connect instead of being dropped with
@@ -24,6 +25,9 @@ import java.util.concurrent.atomic.AtomicInteger
  *  2. **Say why** it is not connected. "电脑未连接" is useless when the real
  *     cause is "the phone is on mobile data" or "the PC is on the 5 GHz SSID
  *     and this phone is on the 2.4 GHz one".
+ *  3. **Switching computers must not cross the wires.** The socket is torn
+ *     down and rebuilt against the new target, and callbacks belonging to the
+ *     retired socket are ignored rather than clobbering the live one.
  */
 class PcClient(
     private val settings: Settings,
@@ -53,32 +57,40 @@ class PcClient(
     @Volatile private var retryAttempt = 0
     @Volatile private var state: State = State.IDLE
     @Volatile private var lastError: String = ""
+    /** Target of the in-flight socket, so failure messages name the right PC. */
+    @Volatile private var target: PcTarget? = null
 
     val isConnected: Boolean get() = state == State.CONNECTED
 
     @Synchronized
     fun connect() {
-        val endpoint = settings.pcEndpoint
-        if (endpoint.isEmpty()) {
+        val pc = settings.activePc
+        if (pc == null || pc.endpoint.isEmpty()) {
             transition(State.FAILED, "还没有绑定电脑，请先点「扫码绑定电脑」")
             return
         }
         if (ws != null) return
         closedByUser = false
-        transition(State.CONNECTING, "正在连接 $endpoint …")
+        target = pc
+        transition(State.CONNECTING, "正在连接 ${pc.name} …")
 
-        val request = Request.Builder().url(endpoint).build()
+        val request = Request.Builder().url(pc.endpoint).build()
         ws = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (webSocket !== ws) return
                 retryAttempt = 0
-                webSocket.send(Protocol.auth(settings.deviceId, deviceName(), settings.token))
+                webSocket.send(Protocol.auth(settings.deviceId, deviceName(), pc.token))
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                if (webSocket !== ws) return
                 val msg = Protocol.parse(text) ?: return
                 when (msg.optString("t")) {
                     "auth_ok" -> {
-                        transition(State.CONNECTED, msg.optString("device_name", "PC"))
+                        // The PC's configured name wins — it is what config.json says.
+                        val reported = msg.optString("device_name")
+                        if (reported.isNotEmpty()) settings.updatePcName(pc.id, reported)
+                        transition(State.CONNECTED, reported.ifEmpty { pc.name })
                         flushPending()
                     }
                     "auth_fail" -> {
@@ -106,6 +118,7 @@ class PcClient(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (webSocket !== ws) return
                 ws = null
                 if (!closedByUser) {
                     transition(State.FAILED, reason.ifEmpty { "连接已关闭" })
@@ -114,9 +127,10 @@ class PcClient(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (webSocket !== ws) return
                 ws = null
                 Log.w(TAG, "websocket failure: ${t.message}")
-                val why = describeFailure(t, settings.pcEndpoint)
+                val why = describeFailure(t, target?.endpoint ?: pc.endpoint)
                 transition(State.FAILED, why)
                 if (!closedByUser) scheduleReconnect()
             }
@@ -128,9 +142,31 @@ class PcClient(
         closedByUser = true
         handler.removeCallbacksAndMessages(null)
         pending.clear()
-        ws?.close(1000, "bye")
+        val old = ws
         ws = null
+        old?.close(1000, "bye")
+        target = null
         transition(State.IDLE, "")
+    }
+
+    /**
+     * Reconnect to whatever `activePc` is now — called after the user switches
+     * computers on the floating ball or in Settings.
+     *
+     * Anything still queued goes to the new target: those dictations were never
+     * delivered anywhere, and dropping them would break the "never lose a
+     * dictation" promise.
+     */
+    @Synchronized
+    fun switchTarget() {
+        closedByUser = true
+        handler.removeCallbacksAndMessages(null)
+        val old = ws
+        ws = null
+        old?.close(1000, "switch")
+        target = null
+        transition(State.IDLE, "")
+        connect()
     }
 
     /** Send dictation. Queues it if the socket is still coming up. */

@@ -46,6 +46,8 @@ PAGE = """<!doctype html>
 <div class="card">
   <h1>PhoneMic 配对</h1>
   <p>电脑 <code>{pc_name}</code> 已就绪。</p>
+  <p style="font-size:13px">这个名字会显示在手机悬浮球上。要改名：编辑
+  <code>{config_path}</code> 里的 <code>device_name</code> 后重启。</p>
 
   {apk_block}
 
@@ -76,6 +78,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     payload: str = ""
     token: str = ""
     pc_name: str = ""
+    config_path: str = ""
 
     def do_GET(self) -> None:  # noqa: N802 (stdlib naming)
         path = self.path.split("?", 1)[0]
@@ -103,6 +106,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
         body = PAGE.format(
             pc_name=self.pc_name or "PC",
+            config_path=self.config_path or "config.json",
             apk_block=apk_block,
             manual=manual,
             token=self.token or "-",
@@ -143,11 +147,19 @@ def start(
     payload: str,
     token: str,
     pc_name: str,
+    config_path: str = "",
 ) -> _Server | None:
     handler = type(
         "Handler",
         (_Handler,),
-        {"qr_png": qr_png, "apk": apk, "payload": payload, "token": token, "pc_name": pc_name},
+        {
+            "qr_png": qr_png,
+            "apk": apk,
+            "payload": payload,
+            "token": token,
+            "pc_name": pc_name,
+            "config_path": config_path,
+        },
     )
     try:
         httpd = _Server((host, port), handler)

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import socket
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -44,11 +45,28 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
     os.replace(tmp, path)
 
 
+def _default_device_name() -> str:
+    """What the phone shows on the floating ball for this computer.
+
+    Defaults to the machine's hostname so two desktops on the same LAN are
+    distinguishable without any setup. Override in config.json (`device_name`)
+    or with ``--name`` when the hostname is unhelpful (often a random OEM
+    string like "DESKTOP-4V6F778").
+    """
+    try:
+        name = socket.gethostname().strip()
+    except OSError:
+        name = ""
+    return name or "PhoneMic PC"
+
+
 @dataclass
 class Config:
     host: str = "0.0.0.0"
     port: int = 8765
-    device_name: str = "PhoneMic PC"
+    # The computer's display name on the phone. Edit `device_name` in
+    # config.json (path printed at startup) to change it.
+    device_name: str = field(default_factory=_default_device_name)
     token: str = ""
     inject_mode: str = MODE_CLIPBOARD
     # Off by default for M0: token auth over a trusted LAN. Flip on once both

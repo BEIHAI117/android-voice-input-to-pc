@@ -39,8 +39,9 @@ import kotlin.math.abs
  * Gestures:
  *   long press (500 ms)  -> start dictation
  *   release              -> stop dictation, send the recognised text to the PC
- *   drag                 -> move the ball (cancelled if it becomes a long press)
+ *   single tap           -> switch to the next bound computer (name shown below)
  *   double tap           -> open settings
+ *   drag                 -> move the ball (cancelled if it becomes a long press)
  *
  * The service is a foreground service with the `microphone` type so it can keep
  * recording while backgrounded — which is the whole point of the product.
@@ -61,6 +62,8 @@ class FloatBallService : Service(), PcClient.Listener {
     private var ballView: View? = null
     private var panelView: TextView? = null
     private var ballParams: WindowManager.LayoutParams? = null
+    /** Shows which computer the next dictation goes to. */
+    private var pcLabel: TextView? = null
 
     private val main = Handler(Looper.getMainLooper())
     private var listening = false
@@ -126,9 +129,17 @@ class FloatBallService : Service(), PcClient.Listener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            // Settings changed the active computer (or re-scanned one) while
+            // the ball was up — rebuild the connection against it.
+            ACTION_RECONNECT -> {
+                client.switchTarget()
+                refreshBallLabel()
+            }
         }
         return START_STICKY
     }
@@ -145,6 +156,8 @@ class FloatBallService : Service(), PcClient.Listener {
     // ------------------------------------------------------------ overlay ---
 
     private fun addBall() {
+        // Fixed 56dp window: the computer name lives inside the circle, so the
+        // ball never occupies more of the screen than the bare icon did.
         val size = dp(56)
         val params = WindowManager.LayoutParams(
             size,
@@ -167,6 +180,8 @@ class FloatBallService : Service(), PcClient.Listener {
         windowManager.addView(ball, params)
         ballView = ball
         ballParams = params
+        pcLabel = ball.findViewById(R.id.tvPcLabel)
+        refreshBallLabel()
 
         val panel = TextView(this).apply {
             setBackgroundResource(R.drawable.bg_panel)
@@ -184,7 +199,7 @@ class FloatBallService : Service(), PcClient.Listener {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = params.x + size + dp(12)
+            x = params.x + dp(56) + dp(12)
             y = params.y
         }
         windowManager.addView(panel, panelParams)
@@ -196,16 +211,52 @@ class FloatBallService : Service(), PcClient.Listener {
         panelView?.let { runCatching { windowManager.removeView(it) } }
         ballView = null
         panelView = null
+        pcLabel = null
     }
 
+    /**
+     * Keeps the message panel beside the ball no matter how wide the name
+     * label gets, and flips it to the left side near the screen edge instead
+     * of letting it run off-screen.
+     */
     private fun updatePanelPosition() {
         val p = ballParams ?: return
-        panelView?.let { panel ->
-            val lp = panel.layoutParams as WindowManager.LayoutParams
-            lp.x = p.x + dp(56) + dp(12)
-            lp.y = p.y
-            runCatching { windowManager.updateViewLayout(panel, lp) }
+        val panel = panelView ?: return
+        val lp = panel.layoutParams as WindowManager.LayoutParams
+        val ballWidth = ballView?.width?.takeIf { it > 0 } ?: dp(56)
+
+        panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+        val panelWidth = panel.measuredWidth
+        val screenW = resources.displayMetrics.widthPixels
+        val rightX = p.x + ballWidth + dp(12)
+        lp.x = if (rightX + panelWidth <= screenW - dp(8)) {
+            rightX
+        } else {
+            (p.x - panelWidth - dp(12)).coerceAtLeast(dp(8))
         }
+        lp.y = p.y
+        runCatching { windowManager.updateViewLayout(panel, lp) }
+    }
+
+    /**
+     * Redraw the computer name inside the ball. The filled/hollow dot doubles
+     * as the connection state, and the same string becomes the accessibility
+     * description so screen readers hear which PC is targeted.
+     */
+    private fun refreshBallLabel() {
+        val label = pcLabel ?: return
+        val pc = settings.activePc
+        val connected = client.isConnected
+        if (pc == null) {
+            label.text = getString(R.string.label_no_pc)
+            label.alpha = 0.6f
+            ballView?.contentDescription = getString(R.string.ball_desc)
+            return
+        }
+        label.text = if (connected) "● ${pc.name}" else "○ ${pc.name}"
+        label.alpha = if (connected) 1f else 0.7f
+        ballView?.contentDescription =
+            getString(R.string.ball_desc_with_pc, pc.name, if (connected) "已连接" else "未连接")
     }
 
     // ----------------------------------------------------------- gestures ---
@@ -255,10 +306,18 @@ class FloatBallService : Service(), PcClient.Listener {
         }
     }
 
+    /**
+     * Single tap = switch to the next computer; double tap = open Settings.
+     *
+     * The switch is deferred by the double-tap window so one tap can still be
+     * read as the first half of a double tap. Nothing else changes: a tap that
+     * turns into a drag or a long press never reaches here.
+     */
     private fun onTap() {
         val now = System.currentTimeMillis()
         if (now - lastTapAt < 350) {
             lastTapAt = 0
+            main.removeCallbacks(switchRunnable)
             startActivity(
                 Intent(this, MainActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -266,8 +325,24 @@ class FloatBallService : Service(), PcClient.Listener {
             )
         } else {
             lastTapAt = now
-            flash(getString(R.string.hint_press_and_hold))
+            main.removeCallbacks(switchRunnable)
+            main.postDelayed(switchRunnable, DOUBLE_TAP_MS)
         }
+    }
+
+    private val switchRunnable = Runnable { switchPc() }
+
+    private fun switchPc() {
+        if (listening) return
+        val next = settings.cyclePc()
+        if (next == null) {
+            flash(getString(R.string.hint_only_one_pc))
+            return
+        }
+        vibrate(20)
+        client.switchTarget()
+        refreshBallLabel()
+        flash(getString(R.string.hint_switched, next.name))
     }
 
     // ---------------------------------------------------------- dictation ---
@@ -384,6 +459,7 @@ class FloatBallService : Service(), PcClient.Listener {
 
     override fun onStateChanged(state: PcClient.State, detail: String) {
         main.post {
+            refreshBallLabel()
             when (state) {
                 PcClient.State.CONNECTED -> flash("已连接 $detail")
                 PcClient.State.CONNECTING -> flash("正在连接电脑…")
@@ -403,9 +479,11 @@ class FloatBallService : Service(), PcClient.Listener {
 
     companion object {
         const val ACTION_STOP = "com.phonemic.app.STOP"
+        const val ACTION_RECONNECT = "com.phonemic.app.RECONNECT"
         private const val TAG = "FloatBall"
         private const val NOTIF_ID = 42
         private const val LONG_PRESS_MS = 500L
+        private const val DOUBLE_TAP_MS = 350L
         private const val PANEL_HIDE_MS = 2500L
 
         fun start(context: android.content.Context) {
@@ -421,6 +499,18 @@ class FloatBallService : Service(), PcClient.Listener {
             context.startService(
                 Intent(context, FloatBallService::class.java).setAction(ACTION_STOP),
             )
+        }
+
+        /**
+         * Re-point a running ball at whatever computer is active now. No-op
+         * when the service is not up, so callers never have to check.
+         */
+        fun reconnect(context: android.content.Context) {
+            runCatching {
+                context.startService(
+                    Intent(context, FloatBallService::class.java).setAction(ACTION_RECONNECT),
+                )
+            }
         }
     }
 }
