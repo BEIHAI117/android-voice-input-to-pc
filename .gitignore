@@ -50,3 +50,12 @@ android/local.properties
 STOPFLAG
 pc-agent/agent.log
 pc-agent/config.json
+
+# 凭据：绝不入库
+gh_token
+*.gh_token
+.env
+
+# v0.2.1 是历史存档 APK，**里面烧着作者个人的 API Key**，只能留在本地磁盘。
+# 公开仓库只放 v0.3.1 起的无密钥构建。
+dist/PhoneMic-v0.2.1.apk

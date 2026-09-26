@@ -44,8 +44,20 @@ if [[ "${1:-release}" == "debug" ]]; then
   OUT=app/build/outputs/apk/debug/app-debug.apk
 else
   if [[ ! -f "$ROOT/android/phonemic-release.keystore" ]]; then
-    echo "missing android/phonemic-release.keystore" >&2
-    exit 1
+    # Release signing is per-developer and deliberately not committed, so a
+    # fresh clone must still produce something installable.
+    echo "note: android/phonemic-release.keystore not found (it is not committed)."
+    echo "      Building a debug APK instead — installable, but signed with the"
+    echo "      Android debug key. To sign your own release:"
+    echo "        keytool -genkeypair -v -keystore android/phonemic-release.keystore \\"
+    echo "                -alias phonemic -keyalg RSA -keysize 2048 -validity 10000"
+    echo
+    gradle --no-daemon :app:assembleDebug
+    OUT=app/build/outputs/apk/debug/app-debug.apk
+    echo
+    echo "APK -> $ROOT/android/$OUT"
+    ls -lh "$ROOT/android/$OUT"
+    exit 0
   fi
   gradle --no-daemon :app:assembleRelease
   OUT=app/build/outputs/apk/release/app-release.apk

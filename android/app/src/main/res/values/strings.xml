@@ -8,6 +8,7 @@
     <string name="hint_thinking">识别中…</string>
     <string name="hint_sent">已发送</string>
     <string name="hint_no_paired_pc">还没有绑定电脑，请先扫码绑定</string>
+    <string name="hint_cloud_key_missing">云端识别需要 API Key：请在设置页填写，或切回「系统识别」</string>
     <string name="hint_not_connected">电脑未连接</string>
     <string name="hint_error">出错了：%1$s</string>
     <string name="hint_switched">已切换到 %1$s</string>

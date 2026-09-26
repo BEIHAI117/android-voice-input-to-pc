@@ -35,6 +35,9 @@ class MainActivity : AppCompatActivity() {
             }
             settings.asrEngine = value
             android.util.Log.i(TAG, "ASR selected -> $value (checkedId=$checkedId)")
+            if (value == Settings.ASR_CLOUD && settings.cloudApiKey.isEmpty()) {
+                Toast.makeText(this, R.string.hint_cloud_key_missing, Toast.LENGTH_LONG).show()
+            }
         }
 
     private val overlayPermission =

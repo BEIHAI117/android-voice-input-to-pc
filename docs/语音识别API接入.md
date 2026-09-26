@@ -1,6 +1,7 @@
 # 语音识别 API 接入 · Xiaomi mimo
 
-已接入并验收。**默认识别引擎是云端识别，开箱即用，无需任何配置。**
+已接入并验收。默认引擎是**系统识别**（零配置可用）；云端识别是可选项，
+**需要你自己填 API Key——App 不内置任何密钥。**
 
 ## 一、关键发现：它不是 OpenAI 的 audio 接口
 
@@ -55,18 +56,22 @@
 
 > 想跳过探测，可把 `cloud_style` 设为 `transcriptions` 或 `chat-audio`。
 
-## 三、预置配置（已写入 APK，开箱即用）
+## 三、预置配置（不含密钥）
 
 | 项 | 值 |
 |---|---|
 | Base URL | `https://token-plan-cn.xiaomimimo.com/v1` |
 | 模型名 | `mimo-v2.5-asr` |
-| API Key | `REDACTED` |
-| 默认引擎 | 云端识别 |
+| API Key | **不内置，由你在设置页填写** |
+| 默认引擎 | 系统识别（不需要网络，也不需要 Key） |
 
-**⚠️ API Key 是明文编译进 APK 的。** 这是为了你"装上就能用"，但如果要把 APK 发给别人，
-请先在设置页里换掉或清空 Key。想改，在 App 设置页直接编辑（Base URL / 模型名 / API Key 三个输入框），
-或改 `Settings.kt` 里的 `DEFAULT_CLOUD_*` 常量重新编译。
+**为什么不内置 Key**：编译进 APK 的密钥等于公开的密钥——二进制一旦传出去就收不回来。
+所以 `Settings.kt` 里的 `DEFAULT_CLOUD_KEY` 恒为空字符串。想用云端识别，
+在 App 设置页填自己的 Key（Base URL / 模型名 / API Key 三个输入框），
+或者改 `DEFAULT_CLOUD_*` 常量后自己重新编译。
+
+没填 Key 就切到云端识别时，App 会在**开始录音之前**提示"云端识别需要 API Key"，
+而不是等你说完话再吃一个 401。
 
 ### 其它可用模型
 

@@ -353,6 +353,12 @@ class FloatBallService : Service(), PcClient.Listener {
             flash(getString(R.string.hint_no_paired_pc))
             return
         }
+        // Catch it before the recording rather than surfacing a bare 401 after
+        // the user has already spoken.
+        if (settings.asrEngine == Settings.ASR_CLOUD && settings.cloudApiKey.isEmpty()) {
+            flash(getString(R.string.hint_cloud_key_missing))
+            return
+        }
         // Fresh engine per utterance: picks up Settings changes without a
         // service restart, and gives every attempt a clean internal state.
         val engine = AsrFactory.create(settings)

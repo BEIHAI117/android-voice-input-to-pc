@@ -198,8 +198,12 @@ class Settings(context: Context) {
             return fresh
         }
 
+    /**
+     * Defaults to the system recognizer: it needs no key and no network, so a
+     * fresh install dictates on the first try. Cloud is opt-in (bring a key).
+     */
     var asrEngine: String
-        get() = sp.getString(KEY_ASR, ASR_CLOUD) ?: ASR_CLOUD
+        get() = sp.getString(KEY_ASR, ASR_SYSTEM) ?: ASR_SYSTEM
         set(v) = sp.edit().putString(KEY_ASR, v).apply()
 
     var cloudBaseUrl: String
@@ -252,11 +256,11 @@ class Settings(context: Context) {
         private const val KEY_CLOUD_MODEL = "cloud_model"
         private const val KEY_CLOUD_STYLE = "cloud_style"
 
-        // Pre-configured so a fresh install can dictate without any typing.
-        // NOTE: the API key travels inside the APK — swap it in Settings before
-        // sharing the binary with anyone.
+        // Endpoint shape is pre-filled so the cloud engine only needs a key.
+        // No API key ships with the app — a key baked into a binary is a leaked
+        // key the moment that binary is shared, so users bring their own.
         const val DEFAULT_CLOUD_BASE = "https://token-plan-cn.xiaomimimo.com/v1"
-        const val DEFAULT_CLOUD_KEY = "REDACTED"
+        const val DEFAULT_CLOUD_KEY = ""
         const val DEFAULT_CLOUD_MODEL = "mimo-v2.5-asr"
     }
 }
