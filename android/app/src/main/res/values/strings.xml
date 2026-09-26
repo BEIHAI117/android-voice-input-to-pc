@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhoneMic</string>
+
+    <string name="ball_desc">悬浮球，长按说话</string>
+    <string name="hint_press_and_hold">长按说话，松手发送</string>
+    <string name="hint_listening">正在聆听…松手发送</string>
+    <string name="hint_thinking">识别中…</string>
+    <string name="hint_sent">已发送</string>
+    <string name="hint_no_paired_pc">还没有绑定电脑，请先扫码绑定</string>
+    <string name="hint_not_connected">电脑未连接</string>
+    <string name="hint_error">出错了：%1$s</string>
+
+    <string name="title_settings">PhoneMic 设置</string>
+    <string name="btn_start_ball">启动悬浮球</string>
+    <string name="btn_stop_ball">停止悬浮球</string>
+    <string name="btn_pair">扫码绑定电脑</string>
+    <string name="btn_manual_pair">手动输入地址</string>
+    <string name="btn_test_connection">测试电脑连接</string>
+    <string name="btn_permission_guide">权限与后台引导</string>
+
+    <string name="label_paired_pc">已绑定电脑：%1$s</string>
+    <string name="label_not_paired">尚未绑定电脑</string>
+    <string name="label_asr_engine">识别方式</string>
+    <string name="label_inject_hint">电脑端注入方式由电脑端配置决定</string>
+
+    <string name="asr_system">系统识别（推荐，可能离线）</string>
+    <string name="asr_cloud">云端识别（需 API Key）</string>
+    <string name="asr_sherpa">本地离线识别（sherpa-onnx）</string>
+
+    <string name="perm_overlay_title">需要「悬浮窗」权限</string>
+    <string name="perm_overlay_body">悬浮球必须显示在其他应用之上。请在接下来的设置页里找到 PhoneMic 并打开开关。</string>
+    <string name="perm_audio_title">需要「麦克风」权限</string>
+    <string name="perm_audio_body">长按说话需要使用麦克风录音。</string>
+
+    <string name="vivo_bg_title">vivo / OriginOS 额外设置</string>
+    <string name="vivo_bg_body">为保证悬浮球在后台不被杀，请手动确认以下开关：\n\n1. 设置 → 应用与权限 → 权限管理 → PhoneMic → 后台弹出界面 → 允许\n2. 设置 → 电池 → 后台耗电管理 → PhoneMic → 不限制\n3. 设置 → 应用与权限 → 自启动 → PhoneMic → 允许\n4. 最近任务里给 PhoneMic 加锁，防止被一键清理</string>
+
+    <string name="channel_name">常驻服务</string>
+    <string name="channel_desc">保持悬浮球运行的常驻通知</string>
+    <string name="notif_title">PhoneMic 悬浮球运行中</string>
+    <string name="notif_text">长按悬浮球说话，松手发送到电脑</string>
+</resources>

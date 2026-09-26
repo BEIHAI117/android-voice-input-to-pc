@@ -1,0 +1,23 @@
+{
+  "_doc": [
+    "Trigger phrases -> desktop actions. Copied to the live config on first run.",
+    "Fields:  match      list of trigger phrases (case-insensitive)",
+    "         contains   true = match if the phrase appears anywhere in the utterance",
+    "         action     launch | hotkey | shell | text | clipboard",
+    "         confirm    (shell only) default true -> the phone is asked to confirm first"
+  ],
+  "commands": [
+    { "name": "截图",       "match": ["截图", "截个图"], "action": { "action": "hotkey", "keys": ["win", "shift", "s"] } },
+    { "name": "锁屏",       "match": ["锁屏", "锁定屏幕"], "action": { "action": "shell", "cmd": "rundll32.exe user32.dll,LockWorkStation", "confirm": false } },
+    { "name": "静音",       "match": ["静音", "关闭声音"], "action": { "action": "hotkey", "keys": ["volumemute"] } },
+    { "name": "音量加",     "match": ["声音大一点", "音量加"], "action": { "action": "hotkey", "keys": ["volumeup"] } },
+    { "name": "音量减",     "match": ["声音小一点", "音量减"], "action": { "action": "hotkey", "keys": ["volumedown"] } },
+    { "name": "撤销",       "match": ["撤销", "后悔了"], "action": { "action": "hotkey", "keys": ["ctrl", "z"] } },
+    { "name": "保存",       "match": ["保存"], "action": { "action": "hotkey", "keys": ["ctrl", "s"] } },
+    { "name": "全选",       "match": ["全选"], "action": { "action": "hotkey", "keys": ["ctrl", "a"] } },
+    { "name": "打开浏览器", "match": ["打开浏览器", "上网"], "action": { "action": "launch", "target": "https://www.bing.com" } },
+    { "name": "打开终端",   "match": ["打开终端", "命令行"], "action": { "action": "launch", "target": "wt.exe" } },
+    { "name": "打开记事本", "match": ["打开记事本"], "action": { "action": "launch", "target": "notepad.exe" } },
+    { "name": "复制",       "match": ["复制这段", "复制一下"], "contains": true, "action": { "action": "hotkey", "keys": ["ctrl", "c"] } }
+  ]
+}

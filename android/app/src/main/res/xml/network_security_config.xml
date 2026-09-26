@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PhoneMic talks to a PC agent on the local network over ws:// and http://.
+
+  These are cleartext **by design**: the whole point is a LAN-only link to a
+  machine you own, and the payload can additionally be sealed with NaCl (see
+  docs/协议.md).
+
+  Android blocks cleartext by default for targetSdk >= 28. Without this file
+  every connection dies with "CLEARTEXT communication ... not permitted by
+  network security policy" and the app reports "电脑未连接" forever.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
