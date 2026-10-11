@@ -59,3 +59,6 @@ gh_token
 # v0.2.1 是历史存档 APK，**里面烧着作者个人的 API Key**，只能留在本地磁盘。
 # 公开仓库只放 v0.3.1 起的无密钥构建。
 dist/PhoneMic-v0.2.1.apk
+
+# 交付包是仓库的派生工件（内含 APK 与源码副本），只留本地磁盘
+dist/PhoneMic-v0.4.0-交付包.zip
