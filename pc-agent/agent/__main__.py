@@ -6,7 +6,7 @@ import asyncio
 import logging
 import sys
 
-from .config import MODE_CLIPBOARD, MODE_TYPE, Config, data_dir
+from .config import MODE_CLIPBOARD, MODE_TYPE, Config, data_dir, normalize_relay_url
 from .server import run
 
 
@@ -25,6 +25,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--encrypt", action="store_true", help="enable NaCl payload encryption")
     p.add_argument("--no-encrypt", action="store_true", help="disable payload encryption")
+    p.add_argument(
+        "--relay",
+        metavar="URL",
+        help="跨局域网中转服务器，如 wss://relay.example.com:8766（由 VPS 提供）",
+    )
+    p.add_argument("--relay-key", help="中转房间密钥（默认沿用 config.json 里的，没有则生成）")
+    p.add_argument("--no-relay", action="store_true", help="停用中转，回到局域网直连")
     p.add_argument("--dry-run", action="store_true", help="do not touch the keyboard/clipboard")
     p.add_argument("-v", "--verbose", action="store_true", help="debug logging")
     return p
@@ -69,6 +76,12 @@ def main(argv: list[str] | None = None) -> int:
         cfg.encrypt = True
     if args.no_encrypt:
         cfg.encrypt = False
+    if args.relay is not None:
+        cfg.relay_url = normalize_relay_url(args.relay)
+    if args.relay_key:
+        cfg.relay_key = args.relay_key.strip()
+    if args.no_relay:
+        cfg.relay_url = ""
     cfg.dry_run = bool(args.dry_run)  # never persisted
     cfg.save()
 

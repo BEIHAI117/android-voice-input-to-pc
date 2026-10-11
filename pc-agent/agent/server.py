@@ -12,8 +12,15 @@ from urllib.parse import quote
 
 from . import commands as commands_mod
 from . import http_page, inject, llm
-from .config import MODE_CLIPBOARD, Config, TrustStore
+from .config import (
+    MODE_CLIPBOARD,
+    Config,
+    TrustStore,
+    relay_pc_id,
+    relay_pc_url,
+)
 from .protocol import ProtocolError, decode, encode, error, ok_ack
+from urllib.parse import urlparse
 
 log = logging.getLogger("phonemic.server")
 
@@ -42,7 +49,19 @@ def pairing_payload(cfg: Config) -> str:
     # `n` carries this computer's display name so the phone can label the
     # floating ball before the first connection. Optional: an older phone that
     # does not know `n` ignores it and falls back to auth_ok.device_name.
-    return f"phonemic://{lan_ip()}:{cfg.port}?v=1&t={cfg.token}&n={quote(cfg.device_name)}"
+    name = quote(cfg.device_name)
+    if cfg.relay_url:
+        # Relay mode: the QR points the phone at the VPS relay (works from any
+        # network, including LAN). `p` is the room id, `s` picks ws/wss.
+        u = urlparse(cfg.relay_url if "://" in cfg.relay_url else "ws://" + cfg.relay_url)
+        scheme = u.scheme or "ws"
+        host = u.hostname or ""
+        port = u.port or (443 if scheme == "wss" else 80)
+        return (
+            f"phonemic://{host}:{port}?v=1&t={cfg.token}&p={relay_pc_id(cfg)}"
+            f"&n={name}&m=relay&s={1 if scheme == 'wss' else 0}"
+        )
+    return f"phonemic://{lan_ip()}:{cfg.port}?v=1&t={cfg.token}&n={name}"
 
 
 class Session:
@@ -197,6 +216,32 @@ class Session:
         return llm.parse_intent(text, self.cfg)
 
 
+async def relay_loop(cfg: Config, trust: TrustStore) -> None:
+    """跨局域网链路：主动出站连中转服务器，断线指数退避重连。
+
+    中转只是字节管道：复用与局域网完全相同的 Session，auth 与业务协议
+    照旧端到端进行，中转既看不到也改不了内容。
+    """
+    from websockets.asyncio.client import connect
+
+    backoff = 1.0
+    while True:
+        try:
+            async with connect(
+                relay_pc_url(cfg), ping_interval=20, ping_timeout=20, open_timeout=10
+            ) as ws:
+                backoff = 1.0
+                log.info("relay: connected (room %s)", relay_pc_id(cfg))
+                await Session(ws, cfg, trust).handle()
+                log.info("relay: session ended, re-registering")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.warning("relay link down: %s — retry in %ss", exc, round(backoff))
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 2, 30)
+
+
 async def run(cfg: Config) -> None:
     from websockets.asyncio.server import serve
 
@@ -217,12 +262,17 @@ async def run(cfg: Config) -> None:
         token=cfg.token,
         pc_name=cfg.device_name,
         config_path=str(cfg.config_path),
+        # In relay mode the pairing string is not "LAN-IP based" any more —
+        # make the manual-entry hint match the QR exactly.
+        manual=payload.split("://", 1)[1] if cfg.relay_url else "",
     )
 
     ip = lan_ip()
     print()
     print(f"  PhoneMic PC agent  v1  ·  {cfg.device_name}")
     print(f"  listening on ws://{ip}:{cfg.port}   (encrypt={'on' if cfg.encrypt else 'off'})")
+    if cfg.relay_url:
+        print(f"  中转：{cfg.relay_url}  （房间 {relay_pc_id(cfg)}，跨局域网可用）")
     print(f"  inject mode: {cfg.inject_mode}{'   [DRY RUN]' if cfg.dry_run else ''}")
     print()
     print(f"  本机名：{cfg.device_name}")
@@ -230,8 +280,13 @@ async def run(cfg: Config) -> None:
     print(f"    手机上单击悬浮球即可在多台电脑之间切换。")
     print()
     if httpd is not None:
+        where = (
+            f"任何网络（含手机流量）都能扫中转二维码"
+            if cfg.relay_url
+            else "手机连上同一个 WiFi"
+        )
         print(f"  ┌──────────────────────────────────────────────────────────┐")
-        print(f"  │  手机连上同一个 WiFi，浏览器打开：                          │")
+        print(f"  │  {where}，浏览器打开：                      │")
         print(f"  │  http://{ip}:{http_port}{' ' * max(0, 38 - len(ip) - len(str(http_port)))}│")
         print(f"  │  → 可下载安装包 + 二维码                                  │")
         print(f"  └──────────────────────────────────────────────────────────┘")
@@ -252,6 +307,9 @@ async def run(cfg: Config) -> None:
             log.exception("session crashed")
         finally:
             log.info("connection closed")
+
+    if cfg.relay_url:
+        asyncio.create_task(relay_loop(cfg, trust))
 
     async with serve(handler, cfg.host, cfg.port, ping_interval=20, ping_timeout=20):
         await asyncio.Future()  # run until cancelled

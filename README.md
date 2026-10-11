@@ -1,12 +1,12 @@
 # PhoneMic · 手机悬浮球语音输入到电脑
 
-> **长按手机上的悬浮球说话，松手后文字直接落在电脑当前光标处** —— 不用碰键盘，纯局域网，不经过任何云端中转。
+> **长按手机上的悬浮球说话，松手后文字直接落在电脑当前光标处** —— 不用碰键盘，纯局域网直连，不经过任何云端；跨网络也可以走你自己的 VPS 中转。
 >
-> *Hold a floating ball on your phone, speak, release — the text appears at your PC's caret. Android voice typing to a Windows machine over the LAN, no cloud relay.*
+> *Hold a floating ball on your phone, speak, release — the text appears at your PC's caret. Android voice typing to a Windows machine over the LAN, no cloud relay; across networks it goes through your own VPS relay.*
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![platform](https://img.shields.io/badge/platform-Android%20%7C%20Windows-3E7BFF.svg)
-![version](https://img.shields.io/badge/version-0.3.1-22a06b.svg)
+![version](https://img.shields.io/badge/version-0.4.0-22a06b.svg)
 ![protocol](https://img.shields.io/badge/protocol-v1-e2518c.svg)
 ![language](https://img.shields.io/badge/Kotlin-1F77B4?logo=kotlin&logoColor=white)
 
@@ -19,6 +19,7 @@
 - Long-press the overlay ball, dictate, release — the recognised text is injected at the caret on your Windows machine
 - Everything travels over your **local network** (WebSocket + token pairing); audio is discarded right after recognition
 - **Multiple PCs**: bind several desktops, single-tap the ball to switch which one receives your dictation (its name is printed inside the ball)
+- **Cross-network dictation (optional)**: phone and PC both dial out to a tiny relay on your own VPS — dictation works on mobile data or across offices, without a public IP on either side
 - Speech recognition: Android's built-in recognizer (default, zero config), any OpenAI-compatible cloud endpoint, or sherpa-onnx offline
 - PC side also runs **voice commands** — "截图" → `Win+Shift+S`, "打开记事本" → launch an app, with confirm-before-execution for dangerous `shell` actions
 
@@ -47,7 +48,8 @@ PhoneMic 把这件事拆到最简单：**手机只负责"听懂"，电脑只负�
 |---|---|
 | 🎙️ **悬浮球长按听写** | 长按 0.5 秒开始，松手发送，气泡实时显示中间结果 |
 | 🖥️ **多电脑切换** | 一台手机绑定局域网里的多台电脑，**单击悬浮球**循环切换，球内显示当前目标 |
-| 📡 **纯局域网** | WebSocket + 配对令牌，不经过任何中转服务器 |
+| 📡 **纯局域网直连** | WebSocket + 配对令牌，不经过任何中转服务器 |
+| 🌍 **跨网中转（可选）** | 手机与电脑都主动连**你自己 VPS** 上的中转（`vps/`），跨 WiFi / 走流量照样听写；令牌认证仍端到端 |
 | 🔌 **三种识别引擎** | 系统识别（默认，零配置）/ 云端识别（OpenAI 兼容，自带 Key）/ sherpa-onnx 离线接入点 |
 | 🎯 **注入到光标处** | 默认剪贴板 + `Ctrl+V`（中文最可靠），可切成真实逐字按键（终端 / SSH / vim） |
 | 🗣️ **语音命令** | 说"截图""锁屏""打开记事本"直接执行动作，危险命令先在手机上二次确认 |
@@ -122,9 +124,9 @@ python -m agent
 
 ### 2. 手机端：装 App
 
-**方式 A —— 直接装编译好的**：仓库 `dist/` 目录里有 `PhoneMic-v0.3.1.apk`，传到手机（微信/QQ 发文件、数据线、`adb install` 都行）点击安装。
+**方式 A —— 直接装编译好的**：仓库 `dist/` 目录里有 `PhoneMic-v0.4.0.apk`，传到手机（微信/QQ 发文件、数据线、`adb install` 都行）点击安装。
 
-> 包名 `com.phonemic.app`，versionName 0.3.1 (versionCode 7)，minSdk 26 / targetSdk 35。
+> 包名 `com.phonemic.app`，versionName 0.4.0 (versionCode 8)，minSdk 26 / targetSdk 35。
 > **APK 不内置任何 API Key** —— 默认用系统识别，不需要配置就能用。
 
 **方式 B —— 自己编译**（不需要 Android Studio）：
@@ -177,6 +179,28 @@ python -m agent --name "台式机B"
 - `auth_ok` 会把 PC 端配置的 `device_name` 回填到手机侧，所以改了电脑名重连就会同步
 - 切换时**还没发出去的听写会跟着走**，不会因为切了目标就丢字
 - 不配置 `device_name` 时默认取主机名，两台机器开箱就能区分
+
+---
+
+## 跨网听写（VPS 中转，可选）
+
+局域网直连要求手机和电脑在同一个 WiFi。想**在外面用流量、跨办公室**继续听写，
+可以在自己的 VPS 上跑一个 ~200 行的中转（`vps/relay_server.py`）：
+
+```
+手机(任意网络) ──ws/wss──> VPS 中转 <──ws/wss── PC agent(任意网络)
+```
+
+- 两端都**主动出站**连接中转：手机、电脑都不需要公网 IP，不用开路由器端口
+- 中转只按房间转发 WebSocket 帧，**不解析内容、看不到配对令牌**，令牌认证与
+  （可选的）NaCl 加密照旧端到端
+- 一台 VPS 可以同时服务多台电脑（每台一个房间 id，由各自的 key 派生）
+- 电脑端开启：`python -m agent --relay wss://你的域名:8766`（写进 config.json，
+  之后普通启动即生效），二维码自动变成中转地址，手机照常扫码
+- 部署步骤见 [vps/部署对接文档.md](vps/部署对接文档.md)（发给 VPS 操作员即可照做）
+
+不配置 `--relay` 时一切照旧（局域网直连），两种模式可共存：同一台电脑在
+局域网里走直连，在外面走中转。
 
 ---
 
@@ -238,6 +262,7 @@ python -m agent --name "台式机B"
 │   └ PcClient: 排队 + 重连 + 切换 │  :8765    │   └ 剪贴板+Ctrl+V / SendInput  │
 │   └ 悬浮球显示当前目标电脑名      │           │  agent/commands.py → 动作执行  │
 │  Settings: 多电脑列表 + 当前目标  │           │  config.json / trust.json      │
+│  （中转模式下 PcClient 连 VPS）   │           │  （--relay 出站连 VPS 中转）    │
 └─────────────────────────────────┘           └────────────────────────────────┘
 ```
 
@@ -264,7 +289,7 @@ python -m agent --name "台式机B"
 
 ## 安全与隐私
 
-- 默认**只监听局域网**，不暴露公网
+- 默认**只监听局域网**，不暴露公网；跨网模式走的是你自己的 VPS 中转（两端主动出站，中转看不到明文令牌）
 - 配对必须扫码（二维码内含 `IP:PORT` + 配对令牌），令牌用 `hmac.compare_digest` **常量时间**比较
 - 已配对设备记在 `trust.json`，可随时删除
 - `shell` 类动作默认要手机端**二次确认**
@@ -277,7 +302,7 @@ python -m agent --name "台式机B"
 1. **sherpa-onnx 未接入** —— 是一个明确报错的接入点（需手动放 AAR + 中文模型）
 2. **端到端加密默认关闭**
 3. **流式上屏未启用** —— 协议里有 `typing` 消息，但默认整句发送（逐句注入会污染撤销栈）
-4. **仅局域网** —— 跨网需要中继隧道与更强鉴权
+4. **跨网中转需要自备一台 VPS** —— 见 `vps/`，手机与电脑各自主动出站，无需公网 IP
 5. **PC Agent 仅 Windows** —— 注入引擎已抽象，macOS/Linux 用 enigo 重写即可
 6. **手机端 UI/权限适配以 vivo OriginOS 6 为主**，其它机型未逐一实测
 
@@ -288,6 +313,7 @@ Phone_mic/
 ├─ dist/                编译好的 APK（直接装）
 ├─ android/             Android App（Kotlin：悬浮球 + 录音 + 识别 + 传输）
 ├─ pc-agent/            PC Agent（Python：WebSocket 服务 + 注入引擎 + 命令层）
+├─ vps/                 跨网中转服务器 + 自检脚本 + 部署对接文档（部署到你自己的 VPS）
 ├─ build-apk.sh         命令行重新编译 APK（不需要 Android Studio）
 ├─ 启动PC端.bat          Windows 一键启动 PC Agent
 └─ docs/
@@ -296,7 +322,8 @@ Phone_mic/
    ├─ OriginOS6-适配清单.md     vivo 上必须手动开的开关
    ├─ 异常退出影响分析.md
    ├─ 模拟器调试报告.md         端到端验收记录
-   └─ 方案-v0.1-架构调研.md     开源项目调研 + 架构提案
+   ├─ 方案-v0.1-架构调研.md     开源项目调研 + 架构提案
+   └─ （协议.md §8）中转端点与配对格式
 ```
 
 ## 验证结果（本机实测）

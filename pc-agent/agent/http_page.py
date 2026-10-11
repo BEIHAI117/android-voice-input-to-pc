@@ -79,6 +79,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     token: str = ""
     pc_name: str = ""
     config_path: str = ""
+    manual: str = ""  # manual-entry hint; empty = derive from the client's IP
 
     def do_GET(self) -> None:  # noqa: N802 (stdlib naming)
         path = self.path.split("?", 1)[0]
@@ -92,9 +93,12 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self.send_error(404)
 
     def _html(self) -> None:
-        host, _ = self.client_address[0], self.server.server_address[1]
-        port = self.server.server_address[1] - 1  # QR/WS port is http_port - 1
-        manual = f"{host}:{port}?t={self.token}"
+        if self.manual:
+            manual = self.manual
+        else:
+            host, _ = self.client_address[0], self.server.server_address[1]
+            port = self.server.server_address[1] - 1  # QR/WS port is http_port - 1
+            manual = f"{host}:{port}?t={self.token}"
 
         if self.apk and self.apk.exists():
             size_mb = self.apk.stat().st_size / 1024 / 1024
@@ -148,6 +152,7 @@ def start(
     token: str,
     pc_name: str,
     config_path: str = "",
+    manual: str = "",
 ) -> _Server | None:
     handler = type(
         "Handler",
@@ -159,6 +164,7 @@ def start(
             "token": token,
             "pc_name": pc_name,
             "config_path": config_path,
+            "manual": manual,
         },
     )
     try:

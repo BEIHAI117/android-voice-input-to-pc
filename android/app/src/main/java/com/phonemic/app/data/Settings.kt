@@ -16,7 +16,14 @@ data class PcTarget(
     val name: String,
     val endpoint: String,
     val token: String,
-)
+) {
+    /**
+     * 经 VPS 中转（[endpoint] 是中转拨号地址 wss://…/phone?p=…）还是局域网
+     * 直连。从 endpoint 形态派生而非单独存字段，旧版本绑定条目无需迁移。
+     */
+    val viaRelay: Boolean
+        get() = endpoint.contains("/phone?")
+}
 
 /**
  * Tiny wrapper over SharedPreferences. Kept in one place so the service, the

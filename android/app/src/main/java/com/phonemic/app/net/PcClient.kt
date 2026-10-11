@@ -59,6 +59,8 @@ class PcClient(
     @Volatile private var lastError: String = ""
     /** Target of the in-flight socket, so failure messages name the right PC. */
     @Volatile private var target: PcTarget? = null
+    /** Detail the *server* gave for closing (relay error frames); shown by onClosed. */
+    @Volatile private var pendingFailDetail: String? = null
 
     val isConnected: Boolean get() = state == State.CONNECTED
 
@@ -98,6 +100,12 @@ class PcClient(
                         transition(State.FAILED, "配对令牌不匹配，请重新扫码绑定")
                         webSocket.close(1000, "auth failed")
                     }
+                    "error" -> {
+                        // 中转服务器的拒绝帧（pc_offline / busy，docs/协议.md §8），
+                        // 随后它会关闭连接 —— 把原因留给 onClosed 去展示。
+                        val detail = msg.optString("msg").ifEmpty { msg.optString("code") }
+                        if (detail.isNotEmpty()) pendingFailDetail = "中转：$detail"
+                    }
                     "ack" -> listener.onAck(
                         msg.optInt("seq", -1),
                         msg.optBoolean("ok", false),
@@ -121,7 +129,9 @@ class PcClient(
                 if (webSocket !== ws) return
                 ws = null
                 if (!closedByUser) {
-                    transition(State.FAILED, reason.ifEmpty { "连接已关闭" })
+                    val detail = pendingFailDetail
+                    pendingFailDetail = null
+                    transition(State.FAILED, detail ?: reason.ifEmpty { "连接已关闭" })
                     scheduleReconnect()
                 }
             }
@@ -129,6 +139,7 @@ class PcClient(
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (webSocket !== ws) return
                 ws = null
+                pendingFailDetail = null
                 Log.w(TAG, "websocket failure: ${t.message}")
                 val why = describeFailure(t, target?.endpoint ?: pc.endpoint)
                 transition(State.FAILED, why)
@@ -222,23 +233,31 @@ class PcClient(
     /**
      * Turn an OkHttp/IO failure into something the user can act on. The single
      * most common cause of "电脑未连接" is the phone and the PC being on
-     * different networks, so say that out loud.
+     * different networks, so say that out loud. In relay mode the hop that can
+     * fail is "phone → VPS", so the advice is about the relay instead.
      */
     private fun describeFailure(t: Throwable, endpoint: String): String {
         val msg = t.message.orEmpty()
+        val relay = endpoint.contains("/phone?")
         return when {
             msg.contains("timeout", true) ->
-                "连接超时（$endpoint）\n请确认手机和电脑连的是同一个 WiFi"
+                if (relay) "连接中转服务器超时（$endpoint）\n请确认手机能上网，且 VPS 上的中转服务正在运行"
+                else "连接超时（$endpoint）\n请确认手机和电脑连的是同一个 WiFi"
             msg.contains("failed to connect", true) ||
                 msg.contains("connect", true) && msg.contains("refused", true) ->
-                "连不上 $endpoint\n请确认电脑上的 PhoneMic 正在运行，且手机与电脑在同一 WiFi"
+                if (relay) "连不上中转服务器 $endpoint\n请确认 VPS 中转服务在运行、端口/防火墙已放行"
+                else "连不上 $endpoint\n请确认电脑上的 PhoneMic 正在运行，且手机与电脑在同一 WiFi"
             msg.contains("unreachable", true) ||
                 msg.contains("ENETUNREACH", true) ||
                 msg.contains("EHOSTUNREACH", true) ->
-                "网络不可达\n手机当前可能没连 WiFi（走的是流量），请连上和电脑同一个 WiFi"
+                if (relay) "网络不可达\n手机当前可能没有联网，请先打开移动数据或 WiFi"
+                else "网络不可达\n手机当前可能没连 WiFi（走的是流量），请连上和电脑同一个 WiFi"
             msg.contains("unable to resolve", true) ||
                 msg.contains("UnknownHost", true) ->
-                "找不到主机 $endpoint\n请检查配对信息是否正确"
+                if (relay) "找不到中转服务器 $endpoint\n请检查中转地址/域名是否正确，手机能否上网"
+                else "找不到主机 $endpoint\n请检查配对信息是否正确"
+            msg.contains("ssl", true) || msg.contains("certificate", true) ->
+                "TLS 证书校验失败（wss）\n请确认中转服务器证书有效、未过期"
             else -> "连接失败：${msg.ifEmpty { t.javaClass.simpleName }}"
         }
     }

@@ -128,8 +128,9 @@ class MainActivity : AppCompatActivity() {
         val activeId = settings.activePcId
         for (pc in list) {
             val isActive = pc.id == activeId
+            val tag = if (pc.viaRelay) "（中转）" else ""
             val row = android.widget.TextView(this).apply {
-                text = (if (isActive) "● " else "○ ") + "${pc.name}\n${pc.endpoint}"
+                text = (if (isActive) "● " else "○ ") + "${pc.name}$tag\n${pc.endpoint}"
                 textSize = 14f
                 setTextColor(0xDE000000.toInt())
                 setPadding(dp(14), dp(10), dp(14), dp(10))
@@ -230,8 +231,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun manualPair() {
         val input = android.widget.EditText(this).apply {
-            hint = "192.168.1.3:8765?t=配对令牌[&n=电脑名]"
-            setSingleLine(true)
+            hint = "192.168.1.3:8765?t=配对令牌\n或 wss://中转地址:8766/phone?p=房间ID&t=配对令牌"
+            setSingleLine(false)
+            maxLines = 2
         }
         AlertDialog.Builder(this)
             .setTitle(R.string.btn_manual_pair)
@@ -274,7 +276,8 @@ class MainActivity : AppCompatActivity() {
      * spells out the likely cause.
      */
     private fun runConnectivityTest() {
-        val endpoint = settings.activePc?.endpoint.orEmpty()
+        val pc = settings.activePc
+        val endpoint = pc?.endpoint.orEmpty()
         if (endpoint.isEmpty()) {
             showDiag("还没有绑定电脑。请先点「扫码绑定电脑」。")
             return
@@ -284,7 +287,7 @@ class MainActivity : AppCompatActivity() {
             showDiag("配对地址无效：$endpoint")
             return
         }
-        val port = uri.port.takeIf { it > 0 } ?: 8765
+        val port = uri.port.takeIf { it > 0 } ?: if (pc?.viaRelay == true) 443 else 8765
 
         showDiag("正在测试 $host:$port …")
         Thread {
@@ -294,18 +297,33 @@ class MainActivity : AppCompatActivity() {
 
             val tcp = tcpProbe(host, port)
             sb.appendLine("TCP $host:$port → ${tcp.first}${tcp.second?.let { "（$it ms）" } ?: ""}")
-            sb.appendLine("网页 http://$host:${port + 1}/ → ${httpProbe(host, port + 1)}")
-            sb.appendLine()
-            if (tcp.first.startsWith("通")) {
-                sb.appendLine("✅ 网络是通的。如果悬浮球仍提示未连接，")
-                sb.appendLine("   请把 App 杀掉重开（让它重新握手）。")
+            if (pc?.viaRelay == true) {
+                sb.appendLine("中转模式：这里测的是「手机 → VPS 中转」这段网络；")
+                sb.appendLine("电脑是否在线，取决于电脑端 PhoneMic 是否已连上中转。")
+                sb.appendLine()
+                if (tcp.first.startsWith("通")) {
+                    sb.appendLine("✅ 到中转的网络是通的。若悬浮球仍提示未连接，")
+                    sb.appendLine("   请确认电脑端已带 --relay 启动（看它的日志里有没有「relay: connected」）。")
+                } else {
+                    sb.appendLine("❌ 到中转的网络不通。按可能性从高到低排查：")
+                    sb.appendLine("1. 手机当前没有联网（或被省流策略限制后台联网）")
+                    sb.appendLine("2. VPS 中转服务没在运行 / 端口没放行（见部署文档）")
+                    sb.appendLine("3. 中转地址写错（域名解析失败见上）")
+                }
             } else {
-                sb.appendLine("❌ 网络不通。按可能性从高到低排查：")
-                sb.appendLine("1. 手机和电脑不在同一个 WiFi")
-                sb.appendLine("   （你现在可能走的是移动流量）")
-                sb.appendLine("2. 两个 WiFi 不是同一频段/访客网络，路由器开了 AP 隔离")
-                sb.appendLine("3. 电脑上的 PhoneMic 没在运行")
-                sb.appendLine("4. Windows 防火墙拦了 python.exe 入站")
+                sb.appendLine("网页 http://$host:${port + 1}/ → ${httpProbe(host, port + 1)}")
+                sb.appendLine()
+                if (tcp.first.startsWith("通")) {
+                    sb.appendLine("✅ 网络是通的。如果悬浮球仍提示未连接，")
+                    sb.appendLine("   请把 App 杀掉重开（让它重新握手）。")
+                } else {
+                    sb.appendLine("❌ 网络不通。按可能性从高到低排查：")
+                    sb.appendLine("1. 手机和电脑不在同一个 WiFi")
+                    sb.appendLine("   （你现在可能走的是移动流量）")
+                    sb.appendLine("2. 两个 WiFi 不是同一频段/访客网络，路由器开了 AP 隔离")
+                    sb.appendLine("3. 电脑上的 PhoneMic 没在运行")
+                    sb.appendLine("4. Windows 防火墙拦了 python.exe 入站")
+                }
             }
             runOnUiThread { showDiag(sb.toString()) }
         }.start()

@@ -5,6 +5,7 @@ across restarts (the QR code therefore does not change every launch).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import secrets
@@ -12,9 +13,14 @@ import socket
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from urllib.parse import quote
 
 APP_NAME = "PhoneMic"
 PROTOCOL_VERSION = 1
+
+# 中转房间 id 的派生盐。VPS 上的 relay_server.py 用同一公式校验注册者，
+# 知道房间 id 但不知道 key 的人无法抢注。
+RELAY_SALT = "phonemic-relay-v1"
 
 # Injection modes understood by agent.inject
 MODE_CLIPBOARD = "clipboard"  # copy to clipboard + Ctrl+V  (default, best for CJK)
@@ -22,6 +28,13 @@ MODE_TYPE = "type"            # SendInput unicode keystrokes (for terminals/SSH/
 
 
 def data_dir() -> Path:
+    # Test/unattended escape hatch: keep a run's token/config out of the real
+    # per-user directory.
+    override = os.environ.get("PHONEMIC_DATA_DIR")
+    if override:
+        p = Path(override)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
     elif sys.platform == "darwin":
@@ -78,6 +91,11 @@ class Config:
     llm_base_url: str = ""
     llm_api_key: str = ""
     llm_model: str = ""
+    # 跨局域网中转：手机与 PC 都主动出站连到这台服务器（部署在 VPS 上），
+    # 双方都不需要公网 IP。空 = 只用局域网直连。relay_key 只派生房间 id，
+    # 不参与手机认证（配对令牌仍是端到端的），泄露它只能占一个空房间。
+    relay_url: str = ""
+    relay_key: str = field(default_factory=lambda: secrets.token_urlsafe(24))
 
     def __post_init__(self) -> None:
         if not self.token:
@@ -103,6 +121,27 @@ class Config:
             return cls()
         known = {f for f in cls.__dataclass_fields__}
         return cls(**{k: v for k, v in raw.items() if k in known})
+
+
+def normalize_relay_url(url: str) -> str:
+    """Accept https://http(s) style mistakes and a trailing slash; keep it clean."""
+    url = url.strip().rstrip("/")
+    if url.startswith("https://"):
+        url = "wss://" + url[len("https://") :]
+    elif url.startswith("http://"):
+        url = "ws://" + url[len("http://") :]
+    return url
+
+
+def relay_pc_id(cfg: "Config") -> str:
+    """The relay room this PC owns. Printed in the QR payload for the phone."""
+    digest = hashlib.sha256((RELAY_SALT + "|" + cfg.relay_key).encode("utf-8")).hexdigest()
+    return "pm" + digest[:12]
+
+
+def relay_pc_url(cfg: "Config") -> str:
+    """URL the PC agent dials out to (registers the room)."""
+    return f"{cfg.relay_url.rstrip('/')}/pc?p={relay_pc_id(cfg)}&k={quote(cfg.relay_key)}"
 
 
 @dataclass
